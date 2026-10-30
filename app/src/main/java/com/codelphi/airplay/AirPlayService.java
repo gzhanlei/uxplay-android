@@ -154,13 +154,8 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
     // ---- C 侧注册回调 → NsdManager ----
 
     @Override
-    public void onAirplayRegister(String name, int port, String deviceId, String pk) {
-        register("_airplay._tcp.", name, port, true, deviceId, pk);
-    }
-
-    @Override
-    public void onRaopRegister(String name, int port, String deviceId, String pk) {
-        register("_raop._tcp.", name, port, false, deviceId, pk);
+    public void onRegister(String name, int port, String deviceId, String pk, boolean airplay) {
+        register(airplay ? "_airplay._tcp." : "_raop._tcp.", name, port, airplay, deviceId, pk);
     }
 
     private void register(String type, String name, int port, boolean airplay, String deviceId, String pk) {

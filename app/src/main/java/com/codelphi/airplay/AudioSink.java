@@ -100,12 +100,8 @@ public class AudioSink {
 
     public synchronized void stop() {
         running = false;
-        Thread worker = thread;
+        WorkerThread.stop(thread);
         thread = null;
-        if (worker != null) {
-            worker.interrupt();
-            try { worker.join(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        }
         if (codec != null) { codec.stop(); codec.release(); codec = null; }
         if (track != null) { track.stop(); track.release(); track = null; }
         queue.clear();

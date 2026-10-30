@@ -131,16 +131,21 @@ public class VideoSink {
     }
 
     private void saveParameterSet(int header, byte[] b, int from, int to) {
+        int type;
+        int vpsType = -1;
+        int spsType = 7;
+        int ppsType = 8;
         if (h265) {
-            int type = (header >> 1) & 0x3f;
-            if (type == 32 && vpsNal == null) vpsNal = slice(b, from, to);
-            if (type == 33 && spsNal == null) spsNal = slice(b, from, to);
-            if (type == 34 && ppsNal == null) ppsNal = slice(b, from, to);
+            type = (header >> 1) & 0x3f;
+            vpsType = 32;
+            spsType = 33;
+            ppsType = 34;
         } else {
-            int type = header & 0x1f;
-            if (type == 7 && spsNal == null) spsNal = slice(b, from, to);
-            if (type == 8 && ppsNal == null) ppsNal = slice(b, from, to);
+            type = header & 0x1f;
         }
+        if (type == vpsType && vpsNal == null) vpsNal = slice(b, from, to);
+        if (type == spsType && spsNal == null) spsNal = slice(b, from, to);
+        if (type == ppsType && ppsNal == null) ppsNal = slice(b, from, to);
     }
 
     private static int findNextStartCode(byte[] b, int from) {
@@ -174,12 +179,8 @@ public class VideoSink {
     public synchronized void stop() {
         running = false;
         /* 同编码的参数集刻意保留：Surface 重建后带缓存 csd 启动可立即出画 */
-        Thread worker = thread;
+        WorkerThread.stop(thread);
         thread = null;
-        if (worker != null) {
-            worker.interrupt();
-            try { worker.join(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
-        }
         if (codec != null) { codec.stop(); codec.release(); codec = null; }
         queue.clear();
     }

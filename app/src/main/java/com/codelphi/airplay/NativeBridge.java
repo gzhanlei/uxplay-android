@@ -6,8 +6,7 @@ import android.view.Surface;
 public class NativeBridge {
 
     public interface Listener {
-        void onAirplayRegister(String name, int port, String deviceId, String pk);
-        void onRaopRegister(String name, int port, String deviceId, String pk);
+        void onRegister(String name, int port, String deviceId, String pk, boolean airplay);
         void onLog(String msg);
     }
 
@@ -40,13 +39,16 @@ public class NativeBridge {
     }
 
     public static void cRegisterAirplay(String name, String type, String deviceId, int port, String pk) {
-        android.util.Log.i("NativeBridge", "注册 " + type + " " + name + ":" + port);
-        if (listener != null) listener.onAirplayRegister(name, port, deviceId, pk);
+        cRegister(name, type, deviceId, port, pk, true);
     }
 
     public static void cRegisterRaop(String name, String type, String deviceId, int port, String pk) {
+        cRegister(name, type, deviceId, port, pk, false);
+    }
+
+    private static void cRegister(String name, String type, String deviceId, int port, String pk, boolean airplay) {
         android.util.Log.i("NativeBridge", "注册 " + type + " " + name + ":" + port);
-        if (listener != null) listener.onRaopRegister(name, port, deviceId, pk);
+        if (listener != null) listener.onRegister(name, port, deviceId, pk, airplay);
     }
 
     public static void cPushVideo(byte[] nal, int len, boolean h265) {
