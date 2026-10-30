@@ -7,6 +7,7 @@ set(OPENSSL_DIR ${CMAKE_SOURCE_DIR}/../../../../deps/openssl-build/armeabi-v7a)
 
 # ---------- libplist 2.4.0 (纯 C, 静态) ----------
 file(GLOB PLIST_SRC ${PLIST}/src/*.c ${PLIST}/libcnary/*.c)
+list(REMOVE_ITEM PLIST_SRC ${PLIST}/libcnary/cnary.c)   # 独立测试程序，不进入生产静态库
 add_library(plist STATIC ${PLIST_SRC})
 target_include_directories(plist PUBLIC ${PLIST}/include ${PLIST}/src ${PLIST}/libcnary ${PLIST}/libcnary/include)
 target_compile_definitions(plist PRIVATE HAVE_STRNDUP HAVE_ASPRINTF HAVE_STPCOPY
