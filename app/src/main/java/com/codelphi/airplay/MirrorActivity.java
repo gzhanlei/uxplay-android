@@ -29,7 +29,7 @@ public class MirrorActivity extends Activity implements NativeBridge.Listener {
             if (wasMirroring && !mirroring) showWaitingScreen();
             wasMirroring = mirroring;
             status.setVisibility(mirroring ? View.GONE : View.VISIBLE);
-            if (!mirroring) status.setText("等待 iPhone/Mac 连接…");
+            if (!mirroring) status.setText(R.string.waiting_for_connection);
             uiHandler.postDelayed(this, 1000);
         }
     };
@@ -66,7 +66,7 @@ public class MirrorActivity extends Activity implements NativeBridge.Listener {
         });
 
         uiHandler.postDelayed(uiTick, 1200);
-        startForegroundService(new Intent(this, AirPlayService.class));
+        AirPlayService.start(this);
     }
 
     @Override
@@ -76,7 +76,7 @@ public class MirrorActivity extends Activity implements NativeBridge.Listener {
             finish();
         } else {
             lastBack = System.currentTimeMillis();
-            Toast.makeText(this, "再按一次返回键退出投屏", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, R.string.press_back_again_to_exit, Toast.LENGTH_SHORT).show();
         }
     }
 
@@ -132,7 +132,7 @@ public class MirrorActivity extends Activity implements NativeBridge.Listener {
         NativeBridge.getVideoSink().stop();
         runOnUiThread(() -> {
             clearSurfaceToBlack();
-            status.setText("等待 iPhone/Mac 连接…");
+            status.setText(R.string.waiting_for_connection);
             status.setVisibility(View.VISIBLE);
         });
     }

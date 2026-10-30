@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="#000000">
+<merge xmlns:android="http://schemas.android.com/apk/res/android">
 
     <SurfaceView
         android:id="@+id/surface"
@@ -17,5 +14,5 @@
         android:padding="16dp"
         android:textColor="#FFFFFF"
         android:textSize="16sp"
-        android:text="初始化…" />
-</FrameLayout>
+        android:text="@string/initializing" />
+</merge>

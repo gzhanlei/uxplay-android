@@ -4,9 +4,11 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
+import android.content.Context;
 import android.content.Intent;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
+import android.os.Build;
 import android.os.IBinder;
 
 import java.io.File;
@@ -22,13 +24,21 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
     private NsdManager nsdManager;
     private NsdManager.RegistrationListener raopListener, airplayListener;
 
+    public static void start(Context context) {
+        Intent intent = new Intent(context, AirPlayService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent);
+        } else {
+            context.startService(intent);
+        }
+    }
+
     @Override
     public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         running = true;
-        nm().createNotificationChannel(new NotificationChannel(CHANNEL, "AirPlay", NotificationManager.IMPORTANCE_LOW));
         startForeground(NOTIF_ID, notif("AirPlay 接收端运行中"));
         NativeBridge.setListener(this);
         /* 后台服务在会话接入时自动唤起画面（Android 10+ 后台启动 Activity 需 appops 授予悬浮窗权限） */
@@ -59,10 +69,16 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
     private NotificationManager nm() { return (NotificationManager) getSystemService(NOTIFICATION_SERVICE); }
 
     private Notification notif(String text) {
-        nm().createNotificationChannel(new NotificationChannel(CHANNEL, "AirPlay", NotificationManager.IMPORTANCE_LOW));
-        return new Notification.Builder(this, CHANNEL)
+        Notification.Builder builder;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            nm().createNotificationChannel(new NotificationChannel(CHANNEL, "AirPlay", NotificationManager.IMPORTANCE_LOW));
+            builder = new Notification.Builder(this, CHANNEL);
+        } else {
+            builder = new Notification.Builder(this);
+        }
+        return builder
                 .setSmallIcon(android.R.drawable.ic_menu_share)
-                .setContentTitle("AirPlay 接收")
+                .setContentTitle(getString(R.string.app_name))
                 .setContentText(text)
                 .build();
     }

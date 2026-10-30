@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AirPlay 接收</string>
+    <string name="initializing">初始化…</string>
+    <string name="waiting_for_connection">等待 iPhone/Mac 连接…</string>
+    <string name="press_back_again_to_exit">再按一次返回键退出投屏</string>
+</resources>
