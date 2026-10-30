@@ -13,11 +13,12 @@ import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
-public class MirrorActivity extends Activity implements NativeBridge.Listener {
+public class MirrorActivity extends Activity {
 
     private SurfaceView surfaceView;
     private TextView status;
     private final Handler uiHandler = new Handler();
+    private final NativeBridge.SessionEndListener sessionEndListener = this::showWaitingScreen;
     private long lastBack;
 
     /* 镜像中每秒检查一次：有帧 → 隐藏状态文字；无帧 → 显示等待提示。
@@ -43,8 +44,7 @@ public class MirrorActivity extends Activity implements NativeBridge.Listener {
         surfaceView = findViewById(R.id.surface);
         status = findViewById(R.id.status);
 
-        NativeBridge.setListener(this);
-        NativeBridge.setSessionEndListener(this::showWaitingScreen);
+        NativeBridge.setSessionEndListener(sessionEndListener);
         /* 解码器报出真实分辨率后按比例重排 SurfaceView：保持宽高比居中，多余部分留黑边，绝不拉伸 */
         VideoSink.setVideoSizeListener((w, h) -> runOnUiThread(() -> applyLetterbox(w, h)));
 
@@ -83,7 +83,7 @@ public class MirrorActivity extends Activity implements NativeBridge.Listener {
     @Override
     protected void onDestroy() {
         uiHandler.removeCallbacksAndMessages(null);
-        NativeBridge.setSessionEndListener(null);   /* 静态槽位持 Activity 引用，销毁时清掉防泄漏 */
+        NativeBridge.clearSessionEndListener(sessionEndListener);   /* 静态槽位持 Activity 引用，销毁时清掉防泄漏 */
         VideoSink.setVideoSizeListener(null);   /* Activity 可重建，避免持着旧实例泄漏 */
         super.onDestroy();
     }
@@ -109,21 +109,6 @@ public class MirrorActivity extends Activity implements NativeBridge.Listener {
         lp.gravity = Gravity.CENTER;
         surfaceView.setLayoutParams(lp);
         android.util.Log.i("MirrorActivity", "letterbox: 视频 " + vw + "x" + vh + " → 显示 " + w + "x" + h + " (屏 " + sw + "x" + sh + ")");
-    }
-
-    @Override
-    public void onAirplayRegister(String name, int port, String deviceId, String pk) {
-        runOnUiThread(() -> status.setText("AirPlay 已注册: " + name + ":" + port));
-    }
-
-    @Override
-    public void onRaopRegister(String name, int port, String deviceId, String pk) {
-        runOnUiThread(() -> status.setText("RAOP 已注册: " + name + ":" + port));
-    }
-
-    @Override
-    public void onLog(String msg) {
-        runOnUiThread(() -> status.setText(msg));
     }
 
     /** Mac 退出镜像/断开：停掉解码器并清掉 Surface 上的残留帧，回退到等待连接画面。

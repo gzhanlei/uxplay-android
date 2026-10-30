@@ -140,6 +140,8 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
     public void onDestroy() {
         running = false;
         NativeBridge.nativeStop();
+        NativeBridge.setListener(null);
+        NativeBridge.setSessionListener(null);
         unregister(raopListener);
         unregister(airplayListener);
         super.onDestroy();

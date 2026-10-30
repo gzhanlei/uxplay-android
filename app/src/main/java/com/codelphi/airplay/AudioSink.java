@@ -89,7 +89,7 @@ public class AudioSink {
     public void pushPcm(byte[] pcm) {
         if (running && track != null) {
             if (track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) track.play();
-            track.write(pcm, 0, pcm.length);
+            writePcm(pcm, pcm.length);
         }
     }
 
@@ -100,15 +100,28 @@ public class AudioSink {
 
     public synchronized void stop() {
         running = false;
-        if (thread != null) { thread.interrupt(); thread = null; }
+        Thread worker = thread;
+        thread = null;
+        if (worker != null) {
+            worker.interrupt();
+            try { worker.join(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
         if (codec != null) { codec.stop(); codec.release(); codec = null; }
         if (track != null) { track.stop(); track.release(); track = null; }
         queue.clear();
     }
 
     private void writePcm(byte[] pcm, int len) {
-        track.write(pcm, 0, len);
-        writtenBytes += len;
+        int offset = 0;
+        while (running && offset < len) {
+            int written = track.write(pcm, offset, len - offset);
+            if (written <= 0) {
+                if (written < 0) android.util.Log.w("AudioSink", "PCM 写入失败: " + written);
+                return;
+            }
+            offset += written;
+            writtenBytes += written;
+        }
     }
 
     private void logStats() {
@@ -171,7 +184,7 @@ public class AudioSink {
                                     android.util.Log.i("AudioSink", "预缓冲完成 " + prebuffered + "B，开始播放");
                                 }
                             }
-                            if (!prebuffering) writePcm(pcmBuf, info.size);
+                            writePcm(pcmBuf, info.size);
                             got = true;
                             /* 诊断：解码 PCM 落盘（30s 覆盖语音段）+ 输出帧尺寸直方图（验证 SBR：5760B=1440采样） */
                             if (dumpLen < DUMP_CAP) {
@@ -201,7 +214,7 @@ public class AudioSink {
                     logStats();
                 }
             } catch (InterruptedException e) {
-                return;
+                break;
             } catch (Exception e) {
                 if (running) android.util.Log.e("AudioSink", "解码异常", e);
             }

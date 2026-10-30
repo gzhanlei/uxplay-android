@@ -17,17 +17,20 @@ public class NativeBridge {
     /** 镜像会话结束（客户端断开连接）时回调，用于清除残留画面回到等待界面 */
     public interface SessionEndListener { void onSessionEnd(); }
 
-    private static Listener listener;
-    private static SessionListener sessionListener;
-    private static SessionEndListener sessionEndListener;
-    private static Surface surface;
-    private static VideoSink videoSink = new VideoSink();
-    private static AudioSink audioSink = new AudioSink();
+    private static volatile Listener listener;
+    private static volatile SessionListener sessionListener;
+    private static volatile SessionEndListener sessionEndListener;
+    private static volatile Surface surface;
+    private static final VideoSink videoSink = new VideoSink();
+    private static final AudioSink audioSink = new AudioSink();
     private static volatile long lastVideoFrame = 0;
 
     public static void setListener(Listener l) { listener = l; }
     public static void setSessionListener(SessionListener l) { sessionListener = l; }
     public static void setSessionEndListener(SessionEndListener l) { sessionEndListener = l; }
+    public static void clearSessionEndListener(SessionEndListener l) {
+        if (sessionEndListener == l) sessionEndListener = null;
+    }
     public static void setSurface(Surface s) { surface = s; }
 
     // ---- C 回调入口 ----
@@ -58,6 +61,7 @@ public class NativeBridge {
 
     public static void cSessionEnd() {
         android.util.Log.i("NativeBridge", "镜像会话结束");
+        lastVideoFrame = 0;
         if (sessionEndListener != null) {
             try { sessionEndListener.onSessionEnd(); } catch (Exception ignored) { }
         }

@@ -138,7 +138,12 @@ public class VideoSink {
         running = false;
         /* spsNal/ppsNal/csdConfigured 刻意保留：AirPlay 只在关键帧重发 SPS/PPS，
            Surface 重建后带缓存 csd 启动可立即出画 */
-        if (thread != null) { thread.interrupt(); thread = null; }
+        Thread worker = thread;
+        thread = null;
+        if (worker != null) {
+            worker.interrupt();
+            try { worker.join(500); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+        }
         if (codec != null) { codec.stop(); codec.release(); codec = null; }
         queue.clear();
     }
@@ -167,26 +172,26 @@ public class VideoSink {
         if (l != null) l.onVideoSize(w, h);
     }
 
-    /** 热循环：立即吞下全部输入并榨干全部输出（60fps 镜像流不能按 50ms 轮询慢慢来） */
+    /** 热循环：按 FIFO 喂入一帧后榨干输出；输入缓冲不可用时保留 pending，绝不重新排队乱序 */
     private void loop() {
         try { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); } catch (Exception ignored) { }
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+        byte[] pending = null;
         long ts = 0;
         while (running) {
             try {
                 boolean fed = false;
-                byte[] nal;
-                while (running && (nal = queue.poll()) != null) {
+                if (pending == null) pending = queue.poll();
+                if (pending != null) {
                     int inIdx = codec.dequeueInputBuffer(0);
-                    if (inIdx < 0) {   /* 输入缓冲耗尽，下轮再喂剩余的 */
-                        queue.offer(nal);
-                        break;
+                    if (inIdx >= 0) {
+                        ByteBuffer in = codec.getInputBuffer(inIdx);
+                        in.clear();
+                        in.put(pending);
+                        codec.queueInputBuffer(inIdx, 0, pending.length, ts += 33367, 0);
+                        pending = null;
+                        fed = true;
                     }
-                    ByteBuffer in = codec.getInputBuffer(inIdx);
-                    in.clear();
-                    in.put(nal);
-                    codec.queueInputBuffer(inIdx, 0, nal.length, ts += 33367, 0);
-                    fed = true;
                 }
                 /* 榨干全部输出 */
                 boolean got = false;
