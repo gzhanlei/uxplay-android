@@ -176,8 +176,8 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         info.setAttribute("srcvers", "220.68");
         info.setAttribute("vv", "2");
         if (airplay) {
-            /* features 与乐播可见实例对齐（macOS 选择器实测接受的位组合） */
-            info.setAttribute("features", "0x527FFFF7,0x1E");
+            /* 在实测可发现的位组合上增加 bit 42（H.265） */
+            info.setAttribute("features", "0x527FFFF7,0x41E");
             info.setAttribute("model", "AppleTV3,2");
             info.setAttribute("flags", "0x4");
             info.setAttribute("pw", "false");

@@ -24,6 +24,7 @@ public class NativeBridge {
     private static final VideoSink videoSink = new VideoSink();
     private static final AudioSink audioSink = new AudioSink();
     private static volatile long lastVideoFrame = 0;
+    private static volatile boolean videoH265;
 
     public static void setListener(Listener l) { listener = l; }
     public static void setSessionListener(SessionListener l) { sessionListener = l; }
@@ -48,7 +49,8 @@ public class NativeBridge {
         if (listener != null) listener.onRaopRegister(name, port, deviceId, pk);
     }
 
-    public static void cPushVideo(byte[] nal, int len) {
+    public static void cPushVideo(byte[] nal, int len, boolean h265) {
+        videoH265 = h265;
         boolean wasIdle = lastVideoFrame == 0 || System.currentTimeMillis() - lastVideoFrame > 2000;
         lastVideoFrame = System.currentTimeMillis();
         if (wasIdle && sessionListener != null) {
@@ -56,7 +58,7 @@ public class NativeBridge {
         }
         byte[] data = new byte[len];
         System.arraycopy(nal, 0, data, 0, len);
-        videoSink.push(data);
+        videoSink.push(data, h265);
     }
 
     public static void cSessionEnd() {
@@ -85,6 +87,7 @@ public class NativeBridge {
     public static void cSetVolume(float volume) { audioSink.setVolume(volume); }
 
     public static Surface getSurface() { return surface; }
+    public static boolean isVideoH265() { return videoH265; }
     public static VideoSink getVideoSink() { return videoSink; }
     public static AudioSink getAudioSink() { return audioSink; }
 

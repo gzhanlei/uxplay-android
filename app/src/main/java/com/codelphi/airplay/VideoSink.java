@@ -26,6 +26,7 @@ public class VideoSink {
     private Surface surface;
     private boolean h265;
 
+    private byte[] vpsNal;  /* H.265：含起始码的 VPS */
     private byte[] spsNal;  /* 含起始码的 SPS */
     private byte[] ppsNal;  /* 含起始码的 PPS */
 
@@ -33,6 +34,7 @@ public class VideoSink {
 
     public synchronized void start(boolean h265, Surface surface) {
         stop();
+        if (this.h265 != h265) clearParameterSets();
         this.h265 = h265;
         this.surface = surface;
         try {
@@ -45,12 +47,31 @@ public class VideoSink {
         }
     }
 
+    private void clearParameterSets() {
+        vpsNal = null;
+        spsNal = null;
+        ppsNal = null;
+        csdConfigured = false;
+    }
+
+    private byte[] joinParameterSets() {
+        byte[] csd = new byte[vpsNal.length + spsNal.length + ppsNal.length];
+        System.arraycopy(vpsNal, 0, csd, 0, vpsNal.length);
+        System.arraycopy(spsNal, 0, csd, vpsNal.length, spsNal.length);
+        System.arraycopy(ppsNal, 0, csd, vpsNal.length + spsNal.length, ppsNal.length);
+        return csd;
+    }
+
     private void createCodec() throws Exception {
         String mime = h265 ? MediaFormat.MIMETYPE_VIDEO_HEVC : MediaFormat.MIMETYPE_VIDEO_AVC;
         MediaFormat fmt = MediaFormat.createVideoFormat(mime, 1920, 1080);
-        if (csdConfigured && spsNal != null && ppsNal != null) {
-            fmt.setByteBuffer("csd-0", ByteBuffer.wrap(spsNal));
-            fmt.setByteBuffer("csd-1", ByteBuffer.wrap(ppsNal));
+        if (csdConfigured) {
+            if (h265) {
+                fmt.setByteBuffer("csd-0", ByteBuffer.wrap(joinParameterSets()));
+            } else {
+                fmt.setByteBuffer("csd-0", ByteBuffer.wrap(spsNal));
+                fmt.setByteBuffer("csd-1", ByteBuffer.wrap(ppsNal));
+            }
         }
         codec = MediaCodec.createDecoderByType(mime);
         codec.configure(fmt, surface, null, 0);
@@ -64,45 +85,61 @@ public class VideoSink {
         if (thread != null) { thread.interrupt(); try { thread.join(500); } catch (InterruptedException ignored) { } thread = null; }
         if (codec != null) { try { codec.stop(); codec.release(); } catch (Exception ignored) { } codec = null; }
         try {
-            running = true;
             createCodec();
-            thread = new Thread(this::loop);
+            running = true;
+            thread = new Thread(this::loop, "videosink");
             thread.start();
             android.util.Log.i("VideoSink", "已用 csd 重配置解码器");
         } catch (Exception e) {
+            running = false;
             android.util.Log.e("VideoSink", "csd 重配置失败", e);
         }
     }
 
-    public void push(byte[] nal) {
-        if (!running) {
-            /* 会话结束后已停机；新会话首帧到达即自动重启（csd 已缓存，Surface 仍有效时可立即出画） */
+    public void push(byte[] nal, boolean h265) {
+        if (this.h265 != h265 || !running) {
+            /* 新会话或编码变化时重启；只有同编码才复用缓存的参数集 */
             if (surface == null || !surface.isValid()) return;
             start(h265, surface);
             if (!running) return;
         }
         byte[] annexb = avccToAnnexB(nal);
-        extractSpsPps(annexb);
-        if (!csdConfigured && spsNal != null && ppsNal != null) {
+        extractParameterSets(annexb);
+        if (!csdConfigured && hasParameterSets()) {
             reconfigureWithCsd();   /* MTK 等硬解器需要 configure 时携带 csd */
         }
         if (running) queue.offer(annexb);
     }
 
-    /** 从 Annex-B 流中提取 SPS(type 7)/PPS(type 8) NALU（含起始码） */
-    private void extractSpsPps(byte[] b) {
+    private boolean hasParameterSets() {
+        return spsNal != null && ppsNal != null && (!h265 || vpsNal != null);
+    }
+
+    /** H.264 提取 SPS/PPS；H.265 提取 VPS/SPS/PPS（均含起始码） */
+    private void extractParameterSets(byte[] b) {
         int i = 0;
         while (i < b.length - 4) {
             if (b[i] == 0 && b[i + 1] == 0 && b[i + 2] == 0 && b[i + 3] == 1) {
-                int type = b[i + 4] & 0x1f;
                 int next = findNextStartCode(b, i + 4);
                 int nalEnd = next < 0 ? b.length : next;
-                if (type == 7 && spsNal == null) spsNal = slice(b, i, nalEnd);
-                if (type == 8 && ppsNal == null) ppsNal = slice(b, i, nalEnd);
+                saveParameterSet(b[i + 4] & 0xff, b, i, nalEnd);
                 i = i + 4;
             } else {
                 i++;
             }
+        }
+    }
+
+    private void saveParameterSet(int header, byte[] b, int from, int to) {
+        if (h265) {
+            int type = (header >> 1) & 0x3f;
+            if (type == 32 && vpsNal == null) vpsNal = slice(b, from, to);
+            if (type == 33 && spsNal == null) spsNal = slice(b, from, to);
+            if (type == 34 && ppsNal == null) ppsNal = slice(b, from, to);
+        } else {
+            int type = header & 0x1f;
+            if (type == 7 && spsNal == null) spsNal = slice(b, from, to);
+            if (type == 8 && ppsNal == null) ppsNal = slice(b, from, to);
         }
     }
 
@@ -136,8 +173,7 @@ public class VideoSink {
 
     public synchronized void stop() {
         running = false;
-        /* spsNal/ppsNal/csdConfigured 刻意保留：AirPlay 只在关键帧重发 SPS/PPS，
-           Surface 重建后带缓存 csd 启动可立即出画 */
+        /* 同编码的参数集刻意保留：Surface 重建后带缓存 csd 启动可立即出画 */
         Thread worker = thread;
         thread = null;
         if (worker != null) {

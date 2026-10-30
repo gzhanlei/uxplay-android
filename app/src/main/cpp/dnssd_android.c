@@ -97,6 +97,13 @@ const char *dnssd_get_raop_txt(dnssd_t *dnssd, int *length) { if (length) *lengt
 const char *dnssd_get_airplay_txt(dnssd_t *dnssd, int *length) { if (length) *length = 0; return NULL; }
 const char *dnssd_get_name(dnssd_t *dnssd, int *length) { if (length) *length = dnssd->name_len; return dnssd->name; }
 const char *dnssd_get_hw_addr(dnssd_t *dnssd, int *length) { if (length) *length = dnssd->hw_addr_len; return dnssd->hw_addr; }
-void dnssd_set_airplay_features(dnssd_t *dnssd, int bit, int val) { (void) dnssd; (void) bit; (void) val; }
+void dnssd_set_airplay_features(dnssd_t *dnssd, int bit, int val) {
+    if (!dnssd || bit < 0 || bit > 63) return;
+    uint64_t features = dnssd_get_airplay_features(dnssd);
+    uint64_t mask = ((uint64_t) 1) << bit;
+    features = val ? features | mask : features & ~mask;
+    dnssd->features1 = (unsigned long) (features & 0xffffffffU);
+    dnssd->features2 = (unsigned long) (features >> 32);
+}
 uint64_t dnssd_get_airplay_features(dnssd_t *dnssd) { return ((uint64_t) dnssd->features2) << 32 | dnssd->features1; }
 void dnssd_set_pk(dnssd_t *dnssd, char *pk_str) { dnssd->pk = pk_str; }

@@ -53,7 +53,7 @@ public class MirrorActivity extends Activity {
                 NativeBridge.setSurface(holder.getSurface());
                 NativeBridge.nativeConnectSurface(holder.getSurface());
                 VideoSink sink = NativeBridge.getVideoSink();
-                if (!sink.isRunning()) sink.start(false, holder.getSurface());
+                if (!sink.isRunning()) sink.start(NativeBridge.isVideoH265(), holder.getSurface());
                 AudioSink sink2 = NativeBridge.getAudioSink();
                 if (!sink2.isRunning()) sink2.start();          /* 音频解码驱动（此前漏启动） */
             }

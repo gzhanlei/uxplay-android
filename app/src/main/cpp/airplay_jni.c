@@ -140,7 +140,10 @@ static void register_client(void *cls, const char *d, const char *p, const char 
 static bool check_register(void *cls, const char *pk) { (void) cls; (void) pk; return true; }
 static const char *passwd(void *cls, int *len) { (void) cls; if (len) *len = 0; return NULL; }
 static void export_dacp(void *cls, const char *ar, const char *di) { (void) cls; (void) ar; (void) di; }
-static int video_set_codec(void *cls, video_codec_t codec) { (void) cls; (void) codec; return 0; }
+static int video_set_codec(void *cls, video_codec_t codec) {
+    (void) cls;
+    return video_renderer_choose_codec(false, codec == VIDEO_CODEC_H265);
+}
 static void on_video_play(void *cls, const char *loc, float sp) { (void) cls; (void) loc; (void) sp; }
 static void on_video_scrub(void *cls, float p) { (void) cls; (void) p; }
 static void on_video_rate(void *cls, float r) { (void) cls; (void) r; }
@@ -243,6 +246,7 @@ static void *uxplay_thread_fn(void *arg) {
     dnssd_set_airplay_features(discovery, 9, 1);
     dnssd_set_airplay_features(discovery, 10, 1);
     dnssd_set_airplay_features(discovery, 11, 1);
+    dnssd_set_airplay_features(discovery, 42, 1);  /* H.265 */
     raop_set_dnssd(server, discovery);
 
     if (dnssd_register_raop(discovery, raop_port)) LOGE("raop 注册失败");
@@ -278,7 +282,7 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V");
     g_m_register_airplay = (*env)->GetStaticMethodID(env, cls, "cRegisterAirplay",
         "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V");
-    g_m_push_video = (*env)->GetStaticMethodID(env, cls, "cPushVideo", "([BI)V");
+    g_m_push_video = (*env)->GetStaticMethodID(env, cls, "cPushVideo", "([BIZ)V");
     g_m_push_audio = (*env)->GetStaticMethodID(env, cls, "cPushAudio", "([BIB)V");
     g_m_set_volume = (*env)->GetStaticMethodID(env, cls, "cSetVolume", "(F)V");
     g_m_session_end = (*env)->GetStaticMethodID(env, cls, "cSessionEnd", "()V");

@@ -24,7 +24,7 @@ void bridge_push_video_c(unsigned char *data, int len) {
     jbyteArray arr = (*env)->NewByteArray(env, len);
     if (!arr) { if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env); return; }
     (*env)->SetByteArrayRegion(env, arr, 0, len, (const jbyte *) data);
-    (*env)->CallStaticVoidMethod(env, g_bridge_cls, g_m_push_video, arr, len);
+    (*env)->CallStaticVoidMethod(env, g_bridge_cls, g_m_push_video, arr, len, (jboolean) h265);
     (*env)->DeleteLocalRef(env, arr);
     if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
 }
