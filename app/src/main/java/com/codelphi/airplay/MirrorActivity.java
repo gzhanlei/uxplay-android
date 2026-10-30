@@ -18,7 +18,7 @@ public class MirrorActivity extends Activity {
     private SurfaceView surfaceView;
     private TextView status;
     private final Handler uiHandler = new Handler();
-    private final NativeBridge.SessionEndListener sessionEndListener = this::showWaitingScreen;
+    private final NativeBridge.SessionEndListener sessionEndListener = this::endMirroringSession;
     private long lastBack;
 
     /* 镜像中每秒检查一次：有帧 → 隐藏状态文字；无帧 → 显示等待提示。
@@ -114,10 +114,18 @@ public class MirrorActivity extends Activity {
         android.util.Log.i("MirrorActivity", "letterbox: 视频 " + vw + "x" + vh + " → 显示 " + w + "x" + h + " (屏 " + sw + "x" + sh + ")");
     }
 
-    /** Mac 退出镜像/断开：停掉解码器并清掉 Surface 上的残留帧，回退到等待连接画面。
-       新会话首帧到达时 VideoSink.push 会自动重启解码器 */
+    /** 真断开才清参数集；短暂无帧只停解码器，恢复时复用同一编码的 csd */
+    private void endMirroringSession() {
+        showWaitingScreen(true);
+    }
+
     private void showWaitingScreen() {
-        NativeBridge.getVideoSink().endSession();
+        showWaitingScreen(false);
+    }
+
+    private void showWaitingScreen(boolean endSession) {
+        if (endSession) NativeBridge.getVideoSink().endSession();
+        else NativeBridge.getVideoSink().stop();
         runOnUiThread(() -> {
             clearSurfaceToBlack();
             status.setText(R.string.waiting_for_connection);
