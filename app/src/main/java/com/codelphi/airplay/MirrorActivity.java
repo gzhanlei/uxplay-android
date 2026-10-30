@@ -21,16 +21,10 @@ public class MirrorActivity extends Activity {
     private final NativeBridge.SessionEndListener sessionEndListener = this::endMirroringSession;
     private long lastBack;
 
-    /* 镜像中每秒检查一次：有帧 → 隐藏状态文字；无帧 → 显示等待提示。
-       conn_destroy 正常通知会话结束；此处轮询是异常断开（无 FIN）时的兜底 */
-    private boolean wasMirroring;
+    /* 有帧时隐藏等待层；暂时无帧保留最后画面，只有 conn_destroy 才回到等待界面 */
     private final Runnable uiTick = new Runnable() {
         @Override public void run() {
-            boolean mirroring = NativeBridge.videoIdleMs() < 3000;
-            if (wasMirroring && !mirroring) showWaitingScreen();
-            wasMirroring = mirroring;
-            status.setVisibility(mirroring ? View.GONE : View.VISIBLE);
-            if (!mirroring) status.setText(R.string.waiting_for_connection);
+            if (NativeBridge.videoIdleMs() < 3000) status.setVisibility(View.GONE);
             uiHandler.postDelayed(this, 1000);
         }
     };
@@ -114,35 +108,12 @@ public class MirrorActivity extends Activity {
         android.util.Log.i("MirrorActivity", "letterbox: 视频 " + vw + "x" + vh + " → 显示 " + w + "x" + h + " (屏 " + sw + "x" + sh + ")");
     }
 
-    /** 真断开才清参数集；短暂无帧只停解码器，恢复时复用同一编码的 csd */
+    /** 真正断开时才清参数集并显示等待层 */
     private void endMirroringSession() {
-        showWaitingScreen(true);
-    }
-
-    private void showWaitingScreen() {
-        showWaitingScreen(false);
-    }
-
-    private void showWaitingScreen(boolean endSession) {
-        if (endSession) NativeBridge.getVideoSink().endSession();
-        else NativeBridge.getVideoSink().stop();
+        NativeBridge.getVideoSink().endSession();
         runOnUiThread(() -> {
-            clearSurfaceToBlack();
             status.setText(R.string.waiting_for_connection);
             status.setVisibility(View.VISIBLE);
         });
-    }
-
-    private void clearSurfaceToBlack() {
-        try {
-            SurfaceHolder h = surfaceView.getHolder();
-            if (!h.getSurface().isValid()) return;
-            android.graphics.Canvas c = h.lockCanvas(null);
-            if (c == null) return;
-            c.drawColor(android.graphics.Color.BLACK);
-            h.unlockCanvasAndPost(c);
-        } catch (Exception e) {
-            android.util.Log.w("MirrorActivity", "清除残留画面失败", e);
-        }
     }
 }
