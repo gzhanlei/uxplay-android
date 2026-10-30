@@ -3,6 +3,7 @@
  * TXT 属性由 Java 侧按 UxPlay dnssd.c 的内容构造。 */
 #include "dnssd.h"
 #include "jni_bridge.h"
+#include "utils.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -50,9 +51,9 @@ int dnssd_register_raop(dnssd_t *dnssd, unsigned short port) {
     JNIEnv *env = NULL;
     bridge_attach_env(&env);
     if (!env || !g_bridge_cls || !g_m_register_raop) return DNSSD_ERROR_NOERROR;
-    char hw[64] = {0};
-    for (int i = 0; i < dnssd->hw_addr_len && i < 6; i++)
-        snprintf(hw + strlen(hw), sizeof(hw) - strlen(hw), "%02X", dnssd->hw_addr[i] & 0xff);
+    char hw[18] = {0};
+    if (utils_hwaddr_raop(hw, sizeof(hw), dnssd->hw_addr, dnssd->hw_addr_len) < 0)
+        return DNSSD_ERROR_HWADDRLEN;
     char servname[256];
     snprintf(servname, sizeof(servname), "%s@%s", hw, dnssd->name ? dnssd->name : "");
     jstring jname = (*env)->NewStringUTF(env, servname);
@@ -73,9 +74,9 @@ int dnssd_register_airplay(dnssd_t *dnssd, unsigned short port) {
     JNIEnv *env = NULL;
     bridge_attach_env(&env);
     if (!env || !g_bridge_cls || !g_m_register_airplay) return DNSSD_ERROR_NOERROR;
-    char hw[64] = {0};
-    for (int i = 0; i < dnssd->hw_addr_len && i < 6; i++)
-        snprintf(hw + strlen(hw), sizeof(hw) - strlen(hw), "%02X", dnssd->hw_addr[i] & 0xff);
+    char hw[18] = {0};
+    if (utils_hwaddr_airplay(hw, sizeof(hw), dnssd->hw_addr, dnssd->hw_addr_len) < 0)
+        return DNSSD_ERROR_HWADDRLEN;
     jstring jname = (*env)->NewStringUTF(env, dnssd->name ? dnssd->name : "AirPlay");
     jstring jtype = (*env)->NewStringUTF(env, "_airplay._tcp");
     jstring jdev = (*env)->NewStringUTF(env, hw);
