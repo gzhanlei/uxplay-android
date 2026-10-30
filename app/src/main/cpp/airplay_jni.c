@@ -220,6 +220,7 @@ static void *uxplay_thread_fn(void *arg) {
     pthread_mutex_lock(&lifecycle_mutex);
     raop = server;
     pthread_mutex_unlock(&lifecycle_mutex);
+    if (!atomic_load(&running)) goto cleanup;
 
     unsigned short tcp[3] = {0, 0, 0};
     unsigned short udp[3] = {0, 0, 0};
