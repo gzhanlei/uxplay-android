@@ -29,13 +29,13 @@ public class AudioSink {
     private static final int DUMP_CAP = SAMPLE_RATE * 4 * 30; /* 30s，覆盖语音段 */
 
     private final LinkedBlockingQueue<byte[]> queue = new LinkedBlockingQueue<>(QUEUE_CAP);
+    private final Object trackLock = new Object();
     private MediaCodec codec;
-    private AudioTrack track;
+    private volatile AudioTrack track;
     private Thread thread;
     private volatile boolean running;
     private volatile long droppedFrames;
     private volatile long pushedFrames;
-    private long writtenBytes;
     private long lastUnderrun;
     private long lastHead;
     private final StringBuilder sizeHist = new StringBuilder();
@@ -87,15 +87,22 @@ public class AudioSink {
 
     /** PCM 直播（ct=0）不经解码 */
     public void pushPcm(byte[] pcm) {
-        if (running && track != null) {
-            if (track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) track.play();
-            writePcm(pcm, pcm.length);
+        if (!running) return;
+        playTrack();
+        writePcm(pcm, pcm.length);
+    }
+
+    private void playTrack() {
+        synchronized (trackLock) {
+            if (track != null && track.getPlayState() != AudioTrack.PLAYSTATE_PLAYING) track.play();
         }
     }
 
     /** AirPlay 音量为 dB：0=最大，-144=静音（raop_rtp_set_volume 钳制区间），转线性增益给 AudioTrack */
     public void setVolume(float db) {
-        if (track != null) track.setVolume((float) Math.pow(10, db / 20.0));
+        synchronized (trackLock) {
+            if (track != null) track.setVolume((float) Math.pow(10, db / 20.0));
+        }
     }
 
     public synchronized void stop() {
@@ -103,27 +110,45 @@ public class AudioSink {
         WorkerThread.stop(thread);
         thread = null;
         if (codec != null) { codec.stop(); codec.release(); codec = null; }
-        if (track != null) { track.stop(); track.release(); track = null; }
+        synchronized (trackLock) {
+            if (track != null) { track.stop(); track.release(); track = null; }
+        }
         queue.clear();
     }
 
     private void writePcm(byte[] pcm, int len) {
         int offset = 0;
         while (running && offset < len) {
-            int written = track.write(pcm, offset, len - offset);
-            if (written <= 0) {
-                if (written < 0) android.util.Log.w("AudioSink", "PCM 写入失败: " + written);
+            int written;
+            synchronized (trackLock) {
+                if (track == null) return;
+                written = track.write(pcm, offset, len - offset, AudioTrack.WRITE_NON_BLOCKING);
+            }
+            if (written < 0) {
+                android.util.Log.w("AudioSink", "PCM 写入失败: " + written);
                 return;
             }
+            if (written == 0) {
+                try {
+                    Thread.sleep(2);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                continue;
+            }
             offset += written;
-            writtenBytes += written;
         }
     }
 
     private void logStats() {
         long u = 0;
-        try { u = track.getUnderrunCount(); } catch (Exception ignored) { }
-        long head = track.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+        long head;
+        synchronized (trackLock) {
+            if (track == null) return;
+            try { u = track.getUnderrunCount(); } catch (Exception ignored) { }
+            head = track.getPlaybackHeadPosition() & 0xFFFFFFFFL;
+        }
         long headDelta = head - lastHead;   /* 负数说明 track 被重建/回绕，忽略 */
         lastHead = head;
         android.util.Log.i("AudioSink", "统计: 队列=" + queue.size() + " 收=" + pushedFrames
@@ -175,7 +200,7 @@ public class AudioSink {
                             if (prebuffering) {
                                 prebuffered += info.size;
                                 if (prebuffered >= PREBUFFER_BYTES) {
-                                    track.play();
+                                    playTrack();
                                     prebuffering = false;
                                     android.util.Log.i("AudioSink", "预缓冲完成 " + prebuffered + "B，开始播放");
                                 }
