@@ -34,6 +34,7 @@ static raop_t *raop = NULL;
 static pthread_t uxplay_thread;
 static pthread_mutex_t lifecycle_mutex = PTHREAD_MUTEX_INITIALIZER;
 static atomic_int running = ATOMIC_VAR_INIT(0);
+static atomic_bool h265_supported = ATOMIC_VAR_INIT(false);
 static int thread_started = 0;
 static int stopping = 0;
 static unsigned short raop_port = 0, airplay_port = 0;
@@ -142,6 +143,10 @@ static const char *passwd(void *cls, int *len) { (void) cls; if (len) *len = 0; 
 static void export_dacp(void *cls, const char *ar, const char *di) { (void) cls; (void) ar; (void) di; }
 static int video_set_codec(void *cls, video_codec_t codec) {
     (void) cls;
+    if (codec == VIDEO_CODEC_H265 && !atomic_load(&h265_supported)) {
+        LOGE("客户端请求 H.265，但设备没有 HEVC 解码器");
+        return -1;
+    }
     return video_renderer_choose_codec(false, codec == VIDEO_CODEC_H265);
 }
 static void on_video_play(void *cls, const char *loc, float sp) { (void) cls; (void) loc; (void) sp; }
@@ -247,7 +252,7 @@ static void *uxplay_thread_fn(void *arg) {
     dnssd_set_airplay_features(discovery, 9, 1);
     dnssd_set_airplay_features(discovery, 10, 1);
     dnssd_set_airplay_features(discovery, 11, 1);
-    dnssd_set_airplay_features(discovery, 42, 1);  /* H.265 */
+    dnssd_set_airplay_features(discovery, 42, atomic_load(&h265_supported));  /* H.265 */
     raop_set_dnssd(server, discovery);
 
     if (dnssd_register_raop(discovery, raop_port)) LOGE("raop 注册失败");
@@ -310,9 +315,11 @@ static int parse_hw_addr(const char *mac, unsigned char out[6]) {
 
 JNIEXPORT void JNICALL
 Java_com_codelphi_airplay_NativeBridge_nativeSetInfo(JNIEnv *env, jclass cls,
-                                                     jstring jname, jstring jmac) {
+                                                     jstring jname, jstring jmac,
+                                                     jboolean h265Support) {
     (void) cls;
     if (atomic_load(&running) || !jname || !jmac) return;
+    atomic_store(&h265_supported, h265Support == JNI_TRUE);
     const char *n = (*env)->GetStringUTFChars(env, jname, NULL);
     const char *m = (*env)->GetStringUTFChars(env, jmac, NULL);
     if (n && m) {

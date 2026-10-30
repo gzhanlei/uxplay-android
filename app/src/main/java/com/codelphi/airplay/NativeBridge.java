@@ -95,7 +95,7 @@ public class NativeBridge {
 
     static { System.loadLibrary("airplay-jni"); }
 
-    public static native void nativeSetInfo(String name, String mac);
+    public static native void nativeSetInfo(String name, String mac, boolean h265Supported);
     public static native void nativeSetFilesDir(String dir);
     public static native int nativeStart();
     public static native void nativeStop();

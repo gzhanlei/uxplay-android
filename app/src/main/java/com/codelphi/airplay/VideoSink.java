@@ -2,6 +2,8 @@ package com.codelphi.airplay;
 
 import android.view.Surface;
 import android.media.MediaCodec;
+import android.media.MediaCodecInfo;
+import android.media.MediaCodecList;
 import android.media.MediaFormat;
 
 import java.nio.ByteBuffer;
@@ -13,8 +15,25 @@ public class VideoSink {
     /** 视频真实分辨率回调（UI 层据此做 letterbox 等比缩放，避免拉伸） */
     public interface VideoSizeListener { void onVideoSize(int width, int height); }
 
+    private static final boolean H265_SUPPORTED = detectH265Support();
     private static volatile VideoSizeListener sizeListener;
     private int lastReportedW, lastReportedH;
+
+    public static boolean isH265Supported() { return H265_SUPPORTED; }
+
+    private static boolean detectH265Support() {
+        try {
+            for (MediaCodecInfo info : new MediaCodecList(MediaCodecList.REGULAR_CODECS).getCodecInfos()) {
+                if (info.isEncoder()) continue;
+                for (String type : info.getSupportedTypes()) {
+                    if (MediaFormat.MIMETYPE_VIDEO_HEVC.equalsIgnoreCase(type)) return true;
+                }
+            }
+        } catch (Exception e) {
+            android.util.Log.w("VideoSink", "HEVC 解码能力检测失败", e);
+        }
+        return false;
+    }
 
     public static void setVideoSizeListener(VideoSizeListener l) { sizeListener = l; }
 

@@ -59,7 +59,7 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         if (name == null) name = "AirPlay-Receiver";
         mac = mac != null ? mac : loadOrMakeMac();
 
-        NativeBridge.nativeSetInfo(name, mac);
+        NativeBridge.nativeSetInfo(name, mac, VideoSink.isH265Supported());
         NativeBridge.nativeSetFilesDir(getFilesDir().getAbsolutePath());
         AudioSink.dumpDir = getExternalFilesDir(null).getAbsolutePath();
         NativeBridge.nativeStart();
@@ -171,8 +171,8 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         info.setAttribute("srcvers", "220.68");
         info.setAttribute("vv", "2");
         if (airplay) {
-            /* 在实测可发现的位组合上增加 bit 42（H.265） */
-            info.setAttribute("features", "0x527FFFF7,0x41E");
+            /* 仅在设备支持 HEVC 解码时增加 bit 42（H.265） */
+            info.setAttribute("features", VideoSink.isH265Supported() ? "0x527FFFF7,0x41E" : "0x527FFFF7,0x1E");
             info.setAttribute("model", "AppleTV3,2");
             info.setAttribute("flags", "0x4");
             info.setAttribute("pw", "false");
