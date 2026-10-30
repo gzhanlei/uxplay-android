@@ -7,7 +7,6 @@ public class NativeBridge {
 
     public interface Listener {
         void onRegister(String name, int port, String deviceId, String pk, boolean airplay);
-        void onLog(String msg);
     }
 
     /** 新镜像会话开始（首帧视频到达）时回调，用于后台自动唤起画面 */
@@ -34,10 +33,6 @@ public class NativeBridge {
     public static void setSurface(Surface s) { surface = s; }
 
     // ---- C 回调入口 ----
-    public static void cLog(String msg) {
-        if (listener != null) listener.onLog(msg);
-    }
-
     public static void cRegisterAirplay(String name, String type, String deviceId, int port, String pk) {
         cRegister(name, type, deviceId, port, pk, true);
     }

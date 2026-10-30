@@ -179,8 +179,9 @@ public class VideoSink {
         return r;
     }
 
-    /** UxPlay 交来的是 AvCC 格式（4 字节大端长度前缀），转 Annex-B（00 00 00 01 起始码） */
+    /** AvCC（4 字节大端长度前缀）转 Annex-B；UxPlay 已转换的 Annex-B 输入原样返回 */
     private static byte[] avccToAnnexB(byte[] avcc) {
+        if (avcc.length >= 4 && avcc[0] == 0 && avcc[1] == 0 && avcc[2] == 0 && avcc[3] == 1) return avcc;
         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream(avcc.length + 16);
         java.nio.ByteBuffer wrap = java.nio.ByteBuffer.wrap(avcc);
         byte[] sc = {0, 0, 0, 1};
@@ -202,6 +203,15 @@ public class VideoSink {
         thread = null;
         if (codec != null) { codec.stop(); codec.release(); codec = null; }
         queue.clear();
+    }
+
+    public synchronized void endSession() {
+        stop();
+        clearParameterSets();
+    }
+
+    public synchronized void clearSurface() {
+        surface = null;
     }
 
     /** 从输出格式解析实际显示尺寸：优先 crop 裁剪框（硬解常带对齐 padding），否则退回 width/height */

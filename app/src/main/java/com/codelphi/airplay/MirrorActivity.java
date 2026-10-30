@@ -60,7 +60,10 @@ public class MirrorActivity extends Activity {
             @Override public void surfaceChanged(SurfaceHolder h, int f, int w, int hh) { }
             @Override public void surfaceDestroyed(SurfaceHolder h) {
                 NativeBridge.nativeDisconnectSurface();
-                NativeBridge.getVideoSink().stop();
+                NativeBridge.setSurface(null);
+                VideoSink sink = NativeBridge.getVideoSink();
+                sink.stop();
+                sink.clearSurface();
                 NativeBridge.getAudioSink().stop();
             }
         });
@@ -114,7 +117,7 @@ public class MirrorActivity extends Activity {
     /** Mac 退出镜像/断开：停掉解码器并清掉 Surface 上的残留帧，回退到等待连接画面。
        新会话首帧到达时 VideoSink.push 会自动重启解码器 */
     private void showWaitingScreen() {
-        NativeBridge.getVideoSink().stop();
+        NativeBridge.getVideoSink().endSession();
         runOnUiThread(() -> {
             clearSurfaceToBlack();
             status.setText(R.string.waiting_for_connection);

@@ -62,7 +62,13 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         NativeBridge.nativeSetInfo(name, mac, VideoSink.isH265Supported());
         NativeBridge.nativeSetFilesDir(getFilesDir().getAbsolutePath());
         AudioSink.dumpDir = getExternalFilesDir(null).getAbsolutePath();
-        NativeBridge.nativeStart();
+        if (NativeBridge.nativeStart() != 0) {
+            running = false;
+            android.util.Log.e("AirPlay", "原生 AirPlay 服务启动失败");
+            stopForeground(true);
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         return START_STICKY;
     }
 
@@ -216,8 +222,4 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         nm().notify(NOTIF_ID, notif("AirPlay 接收就绪（" + name + "）"));
     }
 
-    @Override
-    public void onLog(String msg) {
-        nm().notify(NOTIF_ID, notif(msg));
-    }
 }
