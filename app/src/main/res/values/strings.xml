@@ -3,5 +3,6 @@
     <string name="app_name">AirPlay 接收</string>
     <string name="initializing">初始化…</string>
     <string name="waiting_for_connection">等待 iPhone/Mac 连接…</string>
+    <string name="start_failed">启动失败：请确认电视已联网、与 iPhone 在同一网络，然后重启应用</string>
     <string name="press_back_again_to_exit">再按一次返回键退出投屏</string>
 </resources>

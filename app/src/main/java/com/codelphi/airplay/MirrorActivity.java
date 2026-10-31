@@ -21,10 +21,21 @@ public class MirrorActivity extends Activity {
     private final NativeBridge.SessionEndListener sessionEndListener = this::endMirroringSession;
     private long lastBack;
 
-    /* 有帧时隐藏等待层；暂时无帧保留最后画面，只有 conn_destroy 才回到等待界面 */
+    /* 有帧时隐藏等待层；无帧时按服务状态显示"初始化/等待连接/失败"，只有 conn_destroy 才回到等待界面 */
     private final Runnable uiTick = new Runnable() {
         @Override public void run() {
-            if (NativeBridge.videoIdleMs() < 3000) status.setVisibility(View.GONE);
+            if (NativeBridge.videoIdleMs() < 3000) {
+                status.setVisibility(View.GONE);
+            } else {
+                status.setVisibility(View.VISIBLE);
+                int state = NativeBridge.getServiceState();
+                if (state == NativeBridge.STATE_FAILED) {
+                    status.setText(R.string.start_failed);
+                } else if (state == NativeBridge.STATE_READY) {
+                    status.setText(R.string.waiting_for_connection);
+                }
+                /* STATE_STARTING：保持"初始化…" */
+            }
             uiHandler.postDelayed(this, 1000);
         }
     };

@@ -9,7 +9,9 @@ import android.content.Intent;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 
 import java.io.File;
 import java.io.FileInputStream;
@@ -20,9 +22,16 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
 
     private static final String CHANNEL = "airplay";
     private static final int NOTIF_ID = 2;
+    /** NsdManager 注册无响应的兜底超时：部分电视 ROM 的 NsdManager 回调永不到达 */
+    private static final long REGISTER_TIMEOUT_MS = 15000;
     public static volatile boolean running;
     private NsdManager nsdManager;
     private NsdManager.RegistrationListener raopListener, airplayListener;
+    /** NsdManager 注册结果：0=等待回调 1=成功 -1=失败 */
+    private volatile int raopState, airplayState;
+    private volatile String serviceName;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Runnable registerTimeout;
 
     public static void start(Context context) {
         Intent intent = new Intent(context, AirPlayService.class);
@@ -38,6 +47,8 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        /* 开机自启后用户再打开界面时会重复进入：服务已在运行且就绪时不重置状态 */
+        boolean fresh = !running;
         running = true;
         startForeground(NOTIF_ID, notif("AirPlay 接收端运行中"));
         NativeBridge.setListener(this);
@@ -58,18 +69,56 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         if (name == null) name = readSmallFile("airplay_name");
         if (name == null) name = "AirPlay-Receiver";
         mac = mac != null ? mac : loadOrMakeMac();
+        serviceName = name;
 
         NativeBridge.nativeSetInfo(name, mac, VideoSink.isH265Supported());
         NativeBridge.nativeSetFilesDir(getFilesDir().getAbsolutePath());
-        AudioSink.dumpDir = getExternalFilesDir(null).getAbsolutePath();
+        /* 个别 ROM getExternalFilesDir 返回 null，回退到内部目录避免 NPE */
+        File dumpDir = getExternalFilesDir(null);
+        AudioSink.dumpDir = (dumpDir != null ? dumpDir : getFilesDir()).getAbsolutePath();
+        if (fresh || NativeBridge.getServiceState() == NativeBridge.STATE_FAILED) {
+            raopState = 0;
+            airplayState = 0;
+            NativeBridge.setServiceState(NativeBridge.STATE_STARTING);
+        }
         if (NativeBridge.nativeStart() != 0) {
             running = false;
             android.util.Log.e("AirPlay", "原生 AirPlay 服务启动失败");
+            NativeBridge.setServiceState(NativeBridge.STATE_FAILED);
             stopForeground(true);
             stopSelf();
             return START_NOT_STICKY;
         }
+        armRegisterTimeout();
         return START_STICKY;
+    }
+
+    /** 注册迟迟无回调时兜底置失败，让等待界面给出可操作提示而不是永远"初始化" */
+    private void armRegisterTimeout() {
+        if (registerTimeout != null) mainHandler.removeCallbacks(registerTimeout);
+        registerTimeout = () -> {
+            if (raopState == 0 || airplayState == 0) {
+                android.util.Log.e("AirPlay", "mDNS 注册超时：NsdManager 无响应（网络或 ROM 异常）");
+                NativeBridge.setServiceState(NativeBridge.STATE_FAILED);
+                nm().notify(NOTIF_ID, notif("服务注册超时，请检查网络"));
+            }
+        };
+        mainHandler.postDelayed(registerTimeout, REGISTER_TIMEOUT_MS);
+    }
+
+    /** 汇总两路 NsdManager 注册结果：双成功→就绪；任一失败且另一路已有结论→失败 */
+    private void onNsdResult(String type, int state) {
+        if ("_raop._tcp.".equals(type)) raopState = state; else airplayState = state;
+        if (raopState == 0 || airplayState == 0) return;   /* 还有一路没结论 */
+        if (registerTimeout != null) mainHandler.removeCallbacks(registerTimeout);
+        if (raopState == 1 && airplayState == 1) {
+            NativeBridge.setServiceState(NativeBridge.STATE_READY);
+            String n = serviceName;
+            nm().notify(NOTIF_ID, notif("AirPlay 接收就绪" + (n != null ? "（" + n + "）" : "")));
+        } else {
+            NativeBridge.setServiceState(NativeBridge.STATE_FAILED);
+            nm().notify(NOTIF_ID, notif("服务注册失败，请检查网络"));
+        }
     }
 
     private NotificationManager nm() { return (NotificationManager) getSystemService(NOTIFICATION_SERVICE); }
@@ -145,6 +194,7 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
     @Override
     public void onDestroy() {
         running = false;
+        mainHandler.removeCallbacksAndMessages(null);
         NativeBridge.nativeStop();
         NativeBridge.setListener(null);
         NativeBridge.setSessionListener(null);
@@ -157,7 +207,7 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         if (nsdManager != null && l != null) nsdManager.unregisterService(l);
     }
 
-    // ---- C 侧注册回调 → NsdManager ----
+    // ---- NsdManager 回调 → 汇总注册结果 ----
 
     @Override
     public void onRegister(String name, int port, String deviceId, String pk, boolean airplay) {
@@ -210,16 +260,23 @@ public class AirPlayService extends Service implements NativeBridge.Listener {
         NsdManager.RegistrationListener listener = new NsdManager.RegistrationListener() {
             @Override public void onServiceRegistered(NsdServiceInfo i) {
                 android.util.Log.i("AirPlay", "已注册: " + i.getServiceName() + " " + type);
+                onNsdResult(type, 1);
             }
             @Override public void onRegistrationFailed(NsdServiceInfo i, int e) {
                 android.util.Log.e("AirPlay", "注册失败: " + type + " err=" + e);
+                onNsdResult(type, -1);
             }
             @Override public void onServiceUnregistered(NsdServiceInfo i) { }
             @Override public void onUnregistrationFailed(NsdServiceInfo i, int e) { }
         };
         if (airplay) { airplayListener = listener; } else { raopListener = listener; }
-        nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener);
-        nm().notify(NOTIF_ID, notif("AirPlay 接收就绪（" + name + "）"));
+        try {
+            nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, listener);
+        } catch (Exception e) {
+            /* 个别 ROM 对异常 TXT/端口直接抛异常，而不是走 onRegistrationFailed */
+            android.util.Log.e("AirPlay", "NsdManager 注册异常: " + type, e);
+            onNsdResult(type, -1);
+        }
     }
 
 }

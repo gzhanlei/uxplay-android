@@ -15,9 +15,15 @@ public class NativeBridge {
     /** 镜像会话结束（客户端断开连接）时回调，用于清除残留画面回到等待界面 */
     public interface SessionEndListener { void onSessionEnd(); }
 
+    /** 前台服务生命周期状态：等待界面据此区分"初始化中 / 已就绪 / 启动失败" */
+    public static final int STATE_STARTING = 0;
+    public static final int STATE_READY = 1;
+    public static final int STATE_FAILED = 2;
+
     private static volatile Listener listener;
     private static volatile SessionListener sessionListener;
     private static volatile SessionEndListener sessionEndListener;
+    private static volatile int serviceState = STATE_STARTING;
     private static volatile Surface surface;
     private static final VideoSink videoSink = new VideoSink();
     private static final AudioSink audioSink = new AudioSink();
@@ -25,6 +31,8 @@ public class NativeBridge {
     private static volatile boolean videoH265;
 
     public static void setListener(Listener l) { listener = l; }
+    public static void setServiceState(int state) { serviceState = state; }
+    public static int getServiceState() { return serviceState; }
     public static void setSessionListener(SessionListener l) { sessionListener = l; }
     public static void setSessionEndListener(SessionEndListener l) { sessionEndListener = l; }
     public static void clearSessionEndListener(SessionEndListener l) {
