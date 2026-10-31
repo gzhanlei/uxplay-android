@@ -29,6 +29,7 @@ jmethodID g_m_push_video = NULL;
 jmethodID g_m_push_audio = NULL;
 jmethodID g_m_set_volume = NULL;
 jmethodID g_m_session_end = NULL;
+jmethodID g_m_audio_flush = NULL;
 
 static raop_t *raop = NULL;
 static pthread_t uxplay_thread;
@@ -112,7 +113,14 @@ static void video_pause(void *cls) { (void) cls; }
 static void video_resume(void *cls) { (void) cls; }
 static void conn_feedback(void *cls) { (void) cls; }
 static void conn_teardown(void *cls, bool *t96, bool *t110) { (void) cls; (void) t96; (void) t110; }
-static void audio_flush(void *cls) { (void) cls; audio_renderer_flush(); }
+static void audio_flush(void *cls) {
+    (void) cls;
+    JNIEnv *env = NULL;
+    bridge_attach_env(&env);
+    if (!env || !g_bridge_cls || !g_m_audio_flush) return;
+    (*env)->CallStaticVoidMethod(env, g_bridge_cls, g_m_audio_flush);
+    if ((*env)->ExceptionCheck(env)) (*env)->ExceptionClear(env);
+}
 static void video_flush(void *cls) { (void) cls; video_renderer_flush(); }
 static double audio_set_client_volume(void *cls) { (void) cls; return 0.0; }
 static void audio_set_metadata(void *cls, const void *b, int l) { (void) cls; (void) b; (void) l; }
@@ -292,7 +300,8 @@ JNIEXPORT jint JNI_OnLoad(JavaVM *vm, void *reserved) {
     g_m_push_audio = (*env)->GetStaticMethodID(env, cls, "cPushAudio", "([BIB)V");
     g_m_set_volume = (*env)->GetStaticMethodID(env, cls, "cSetVolume", "(F)V");
     g_m_session_end = (*env)->GetStaticMethodID(env, cls, "cSessionEnd", "()V");
-    if (!g_m_register_raop || !g_m_register_airplay || !g_m_push_video || !g_m_push_audio || !g_m_set_volume || !g_m_session_end)
+    g_m_audio_flush = (*env)->GetStaticMethodID(env, cls, "cAudioFlush", "()V");
+    if (!g_m_register_raop || !g_m_register_airplay || !g_m_push_video || !g_m_push_audio || !g_m_set_volume || !g_m_session_end || !g_m_audio_flush)
         return JNI_ERR;
     return JNI_VERSION_1_6;
 }

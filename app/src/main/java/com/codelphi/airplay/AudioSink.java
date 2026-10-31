@@ -38,6 +38,7 @@ public class AudioSink {
     private volatile long pushedFrames;
     private long lastUnderrun;
     private long lastHead;
+    private int intervalPeak;              /* 5s 统计窗口内 PCM 峰值(16-bit),区分"静音数据"与"播放异常" */
     private final StringBuilder sizeHist = new StringBuilder();
     public static String dumpDir = "/data/local/tmp";
 
@@ -100,9 +101,24 @@ public class AudioSink {
 
     /** AirPlay 音量为 dB：0=最大，-144=静音（raop_rtp_set_volume 钳制区间），转线性增益给 AudioTrack */
     public void setVolume(float db) {
+        double gain = Math.pow(10, db / 20.0);
+        android.util.Log.i("AudioSink", "音量: " + db + "dB → 增益 " + String.format("%.4f", gain));
         synchronized (trackLock) {
-            if (track != null) track.setVolume((float) Math.pow(10, db / 20.0));
+            if (track != null) track.setVolume((float) gain);
         }
+    }
+
+    /** 会话 FLUSH：丢弃未解码队列与 AudioTrack 残留缓冲（对齐上游 gstreamer flush 语义） */
+    public synchronized void flush() {
+        queue.clear();
+        synchronized (trackLock) {
+            if (track != null && track.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                track.pause();
+                track.flush();
+                track.play();
+            }
+        }
+        android.util.Log.i("AudioSink", "FLUSH: 已清空音频队列与缓冲");
     }
 
     public synchronized void stop() {
@@ -154,7 +170,9 @@ public class AudioSink {
         android.util.Log.i("AudioSink", "统计: 队列=" + queue.size() + " 收=" + pushedFrames
                 + " 丢=" + droppedFrames + " underrun=" + u + " (+" + (u - lastUnderrun) + ")"
                 + " 播放头+" + headDelta + "帧/5s(应≈" + (SAMPLE_RATE * 5) + ")"
+                + " 峰值=" + intervalPeak + "/32767"
                 + " 尺寸[" + sizeHist + "]");
+        intervalPeak = 0;
         lastUnderrun = u;
         sizeHist.setLength(0);
     }
@@ -197,6 +215,14 @@ public class AudioSink {
                             if (pcmBuf.length < info.size) pcmBuf = new byte[info.size];
                             out.position(info.offset);
                             out.get(pcmBuf, 0, info.size);
+                            /* PCM 16-bit LE 峰值计量：>1000 才算有可闻信号 */
+                            int peak = intervalPeak;
+                            for (int i = info.offset; i + 1 < info.offset + info.size; i += 2) {
+                                int s = (short) ((pcmBuf[i] & 0xFF) | (pcmBuf[i + 1] << 8));
+                                int a = s < 0 ? -s : s;
+                                if (a > peak) peak = a;
+                            }
+                            intervalPeak = peak;
                             if (prebuffering) {
                                 prebuffered += info.size;
                                 if (prebuffered >= PREBUFFER_BYTES) {

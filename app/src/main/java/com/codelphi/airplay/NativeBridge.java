@@ -91,6 +91,13 @@ public class NativeBridge {
 
     public static void cSetVolume(float volume) { audioSink.setVolume(volume); }
 
+    /** C 侧 audio_flush（FLUSH 事件/会话重置）：丢弃未播的音频残留 */
+    public static void cAudioFlush() {
+        try { audioSink.flush(); } catch (Exception e) {
+            android.util.Log.e("AudioSink", "flush 失败", e);
+        }
+    }
+
     public static Surface getSurface() { return surface; }
     public static boolean isVideoH265() { return videoH265; }
     public static VideoSink getVideoSink() { return videoSink; }
